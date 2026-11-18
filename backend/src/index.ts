@@ -17,7 +17,7 @@ const repository: Repository =
   config.storage === "postgres" ? PrismaRepository.fromUrl(config.databaseUrl!) : new InMemoryRepository();
 if (config.storage === "memory") logger.warn("STORAGE=memory : tout sera oublié au redémarrage, comme les leçons des post-mortems.");
 
-const notifier = config.botUrl ? new HttpBotNotifier(config.botUrl, config.botTimeoutMs) : new SilentBotNotifier();
+const notifier = config.botUrl ? new HttpBotNotifier(config.botUrl, config.botTimeoutMs, fetch, config.botNotifyToken) : new SilentBotNotifier();
 if (!config.botUrl) logger.warn("BOT_URL absent : les blâmes ne seront pas annoncés au canal.");
 
 const background = new BackgroundTasks(logger);

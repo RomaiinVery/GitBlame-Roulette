@@ -123,7 +123,7 @@ Objet **`Blame`** (même forme partout, y compris dans `/notify`) :
 
 ### 4.1 Backend → Bot : `POST {BOT_URL}/notify` **[D3]**
 
-Envoyé une fois par blâme, dès que le verdict est enregistré. Timeout `BOT_TIMEOUT_MS` (3 s), pas de retry.
+Envoyé une fois par blâme, dès que le verdict est enregistré. Timeout `BOT_TIMEOUT_MS` (3 s), pas de retry. Si `BOT_NOTIFY_TOKEN` est défini, envoyé en `Authorization: Bearer <BOT_NOTIFY_TOKEN>` (exigé par le bot).
 
 ```json
 { "type": "blame.created", "blame": <Blame> }

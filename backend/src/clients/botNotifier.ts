@@ -13,12 +13,14 @@ export class HttpBotNotifier implements BotNotifier {
     private readonly baseUrl: string,
     private readonly timeoutMs: number,
     private readonly fetchImpl: typeof fetch = fetch,
+    /** BOT_NOTIFY_TOKEN : le bot refuse (401) les ragots non signés. */
+    private readonly token?: string,
   ) {}
 
   async notifyBlame(blame: BlameView): Promise<void> {
     const response = await this.fetchImpl(`${this.baseUrl}/notify`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...(this.token && { authorization: `Bearer ${this.token}` }) },
       body: JSON.stringify({ type: "blame.created", blame }),
       signal: AbortSignal.timeout(this.timeoutMs),
     });

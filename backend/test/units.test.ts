@@ -50,6 +50,16 @@ describe("HttpBotNotifier", () => {
     await notifier.notifyBlame({ id: "b1" } as never);
     expect(call).toEqual({ url: "http://bot:3001/notify", body: { type: "blame.created", blame: { id: "b1" } } });
   });
+
+  it("envoie BOT_NOTIFY_TOKEN en Bearer", async () => {
+    let auth: string | null = null;
+    const notifier = new HttpBotNotifier("http://bot:3001", 1000, async (_url, init) => {
+      auth = new Headers(init?.headers).get("authorization");
+      return new Response(null, { status: 204 });
+    }, "s3cret");
+    await notifier.notifyBlame({ id: "b1" } as never);
+    expect(auth).toBe("Bearer s3cret");
+  });
 });
 
 describe("FallbackRoulette", () => {

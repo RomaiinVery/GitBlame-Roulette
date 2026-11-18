@@ -17,6 +17,7 @@ const ConfigSchema = z
     AI_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
     BOT_URL: optionalUrl,
     BOT_TIMEOUT_MS: z.coerce.number().int().positive().default(3000),
+    BOT_NOTIFY_TOKEN: optionalString,
     API_TOKEN: optionalString,
     SENTRY_CLIENT_SECRET: optionalString,
     CI_WEBHOOK_SECRET: optionalString,
@@ -35,6 +36,7 @@ export interface Config {
   aiTimeoutMs: number;
   botUrl?: string;
   botTimeoutMs: number;
+  botNotifyToken?: string;
   apiToken?: string;
   sentryClientSecret?: string;
   ciWebhookSecret?: string;
@@ -56,6 +58,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     aiTimeoutMs: e.AI_TIMEOUT_MS,
     botUrl: e.BOT_URL?.replace(/\/+$/, ""),
     botTimeoutMs: e.BOT_TIMEOUT_MS,
+    botNotifyToken: e.BOT_NOTIFY_TOKEN,
     apiToken: e.API_TOKEN,
     sentryClientSecret: e.SENTRY_CLIENT_SECRET,
     ciWebhookSecret: e.CI_WEBHOOK_SECRET,
