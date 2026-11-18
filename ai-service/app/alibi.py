@@ -182,9 +182,12 @@ def _build_user_message(incident: Incident, scapegoat: Candidate, locale: Locale
     )
 
 
-def _make_client() -> Any:
+def _make_client(timeout: Optional[float] = None) -> Any:
     import anthropic  # import tardif : le moteur à gabarits ne doit pas en dépendre
 
+    if timeout is not None:
+        # Budget serré imposé par l'appelant : pas de retry, il n'y aurait pas le temps.
+        return anthropic.Anthropic(timeout=timeout, max_retries=0)
     timeout = float(os.getenv("ALIBI_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS))
     return anthropic.Anthropic(timeout=timeout, max_retries=1)
 
@@ -195,9 +198,10 @@ def claude_alibi(
     locale: Locale = "fr",
     client: Any = None,
     model: Optional[str] = None,
+    timeout: Optional[float] = None,
 ) -> tuple[Alibi, str]:
     """Demande l'alibi à Claude. Renvoie (alibi, modèle qui a répondu)."""
-    client = client if client is not None else _make_client()
+    client = client if client is not None else _make_client(timeout)
     model = model or os.getenv("ALIBI_MODEL", DEFAULT_MODEL)
 
     response = client.beta.messages.create(
@@ -253,11 +257,15 @@ def generate_alibi(
     locale: Locale = "fr",
     seed: Optional[int] = None,
     client: Any = None,
+    timeout: Optional[float] = None,
 ) -> AlibiResult:
-    """Point d'entrée unique : toujours un alibi, jamais d'exception."""
+    """Point d'entrée unique : toujours un alibi, jamais d'exception.
+
+    ``timeout`` borne l'appel à Claude (sans retry) quand l'appelant a lui-même un délai court.
+    """
     if _engine() == "claude" or client is not None:
         try:
-            alibi, model = claude_alibi(incident, scapegoat, locale, client=client)
+            alibi, model = claude_alibi(incident, scapegoat, locale, client=client, timeout=timeout)
             return AlibiResult(alibi=alibi, source="claude", model=model)
         except Exception as exc:  # noqa: BLE001 — un alibi de secours vaut mieux qu'une 500
             logger.warning("Claude alibi failed, falling back to templates: %r", exc)

@@ -21,9 +21,14 @@ from .models import (
     DrawResult,
     RouletteRequest,
     RouletteResult,
+    SpinRequest,
+    SpinResponse,
 )
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+
+# Le backend coupe à 5 s (AI_TIMEOUT_MS) : Claude a 3,5 s, les gabarits finissent le travail.
+SPIN_ALIBI_TIMEOUT_SECONDS = float(os.getenv("SPIN_ALIBI_TIMEOUT_SECONDS", "3.5"))
 
 app = FastAPI(
     title="GitBlame Roulette — AI Alibi Service",
@@ -71,3 +76,21 @@ def roulette(request: RouletteRequest) -> RouletteResult:
         alibi_source=alibi.source,
         model=alibi.model,
     )
+
+
+@app.post("/v1/spin", response_model=SpinResponse)
+def spin(request: SpinRequest) -> SpinResponse:
+    """L'appel du backend (backend/src/clients/aiService.ts), dans son format camelCase.
+
+    Répond toujours avant le timeout de 5 s du backend : si Claude traîne, alibi à gabarits.
+    """
+    result = _draw_or_422(DrawRequest(candidates=[c.to_candidate() for c in request.candidates]))
+    alibi = generate_alibi(
+        request.incident.to_incident(),
+        result.scapegoat,
+        locale="fr",
+        seed=result.seed,
+        timeout=SPIN_ALIBI_TIMEOUT_SECONDS,
+    )
+    probability = next(o.probability for o in result.odds if o.candidate_id == result.scapegoat.id)
+    return SpinResponse(scapegoatId=result.scapegoat.id, alibi=alibi.alibi.excuse, probability=probability)

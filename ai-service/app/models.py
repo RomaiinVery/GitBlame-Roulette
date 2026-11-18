@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # Les graines restent sous Number.MAX_SAFE_INTEGER : le backend Node les relit sans les arrondir.
 MAX_SAFE_SEED = 2**53 - 1
@@ -111,3 +111,78 @@ class RouletteResult(BaseModel):
     alibi: Alibi
     alibi_source: AlibiSource
     model: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Format du backend (POST /v1/spin) : camelCase, tel que l'envoie
+# backend/src/clients/aiService.ts. On s'adapte au client, pas l'inverse.
+# ---------------------------------------------------------------------------
+
+DAYS_PER_YEAR = 365.25
+
+
+class SpinIncident(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(..., min_length=1, max_length=200)
+    title: str = Field(..., min_length=1, max_length=500)
+    source: str = Field("MANUAL", max_length=50, description="SENTRY, CI, MANUAL")
+    severity: Severity = "medium"
+    repository: Optional[str] = Field(None, max_length=200)
+    commitSha: Optional[str] = Field(None, max_length=64)
+
+    @field_validator("severity", mode="before")
+    @classmethod
+    def _lowercase_severity(cls, value: object) -> object:
+        return value.lower() if isinstance(value, str) else value
+
+    def to_incident(self) -> Incident:
+        return Incident(
+            id=self.id,
+            title=self.title,
+            source=self.source.lower(),
+            severity=self.severity,
+            service=self.repository,
+            commit_sha=self.commitSha,
+        )
+
+
+class SpinCandidate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(..., min_length=1, max_length=200)
+    name: str = Field(..., min_length=1, max_length=200)
+    handle: Optional[str] = Field(None, max_length=200)
+    seniorityDays: float = Field(0, ge=0, le=60 * DAYS_PER_YEAR)
+    fatigueLevel: float = Field(50, ge=0, le=100)
+    blameCount: int = Field(0, ge=0, le=10_000)
+
+    def to_candidate(self) -> Candidate:
+        return Candidate(
+            id=self.id,
+            name=self.name,
+            handle=self.handle,
+            seniority_years=self.seniorityDays / DAYS_PER_YEAR,
+            fatigue=self.fatigueLevel / 100,
+            recent_blames=self.blameCount,
+        )
+
+
+class SpinRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    incident: SpinIncident
+    candidates: List[SpinCandidate] = Field(..., min_length=1, max_length=500)
+
+    @model_validator(mode="after")
+    def _unique_ids(self) -> "SpinRequest":
+        ids = [c.id for c in self.candidates]
+        if len(ids) != len(set(ids)):
+            raise ValueError("candidate ids must be unique")
+        return self
+
+
+class SpinResponse(BaseModel):
+    scapegoatId: str
+    alibi: str
+    probability: float = Field(..., ge=0, le=1)

@@ -10,9 +10,50 @@
 
 ---
 
-## `POST /v1/roulette` — l'appel standard
+## `POST /v1/spin` — l'appel du backend (D4) ✅
 
-Tire un bouc émissaire avec *ChaosJustice™* puis génère son alibi.
+Route alignée sur `backend/README_STATE.md` §4.2 et `backend/src/clients/aiService.ts` : **aucune adaptation côté backend**.
+Vérifié de bout en bout contre le backend de `feat/core-engine` (mode `STORAGE=memory`) : incident → `BLAMED`, `aiFallback: false`.
+
+### Requête (format backend, camelCase)
+
+```json
+{
+  "incident": { "id": "…", "source": "SENTRY", "title": "…", "severity": "HIGH", "repository": "acme/shop", "commitSha": "a1b2c3d" },
+  "candidates": [
+    { "id": "…", "name": "David Legacy", "handle": "david", "seniorityDays": 3650, "fatigueLevel": 90, "blameCount": 4 }
+  ]
+}
+```
+
+| Champ backend | Utilisé comme | Notes |
+| :--- | :--- | :--- |
+| `incident.severity` | `LOW` … `CRITICAL` | Casse indifférente. |
+| `incident.repository`, `commitSha` | contexte de l'alibi | `null` accepté. |
+| `seniorityDays` | ancienneté = jours / 365,25 | |
+| `fatigueLevel` (0-100) | fatigue = valeur / 100 | Hors bornes ⇒ 422. |
+| `blameCount` | anti-acharnement | Total des blâmes : plus on a été blâmé, moins on est tiré. |
+
+Les développeurs `isActive: false` (vacances) ne sont pas envoyés par le backend : le bonus « vacances » de ChaosJustice™ ne s'applique donc pas via cette route.
+
+### Réponse `200`
+
+```json
+{ "scapegoatId": "dev_1", "alibi": "L'incident « … » est dû à …", "probability": 0.405517 }
+```
+
+* `scapegoatId` est toujours l'un des `candidates[].id`.
+* `probability` = chance qu'avait le coupable d'être tiré par ChaosJustice™ (0-1, jamais `null`).
+* `alibi` = l'excuse en français, une à trois phrases.
+* **Toujours sous les 5 s du backend** : Claude a `SPIN_ALIBI_TIMEOUT_SECONDS` (3,5 s, sans retry), puis bascule sur les gabarits.
+* `422` si `candidates` est vide ou si un champ est invalide : le backend passe alors sur sa roulette de secours.
+
+---
+
+## `POST /v1/roulette` — tirage + alibi détaillé
+
+Tire un bouc émissaire avec *ChaosJustice™* puis génère son alibi, avec le détail complet (cotes de chacun, graine, jargon…).
+Format snake_case, utile pour des usages plus riches que `/v1/spin` (ex. afficher les cotes dans le bot via le backend).
 
 ### Requête
 
@@ -131,5 +172,6 @@ Probabilité = poids / somme des poids.
 | `ANTHROPIC_API_KEY` | — | Clé API Claude. Jamais commitée. |
 | `ALIBI_MODEL` | `claude-opus-5-5` | Modèle utilisé pour les alibis. |
 | `ALIBI_EFFORT` | `low` | Effort de raisonnement (`low` … `max`). |
-| `ALIBI_TIMEOUT_SECONDS` | `30` | Timeout de l'appel à Claude avant repli. |
+| `ALIBI_TIMEOUT_SECONDS` | `30` | Timeout de l'appel à Claude avant repli (`/v1/roulette`, `/v1/alibi`). |
+| `SPIN_ALIBI_TIMEOUT_SECONDS` | `3.5` | Timeout de Claude sur `/v1/spin`, sans retry. Doit rester sous `AI_TIMEOUT_MS` du backend. |
 | `LOG_LEVEL` | `INFO` | |
