@@ -1,0 +1,20 @@
+# PostgreSQL local pour le backend. `npm run db:up` puis `npm run db:migrate`.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: gitblame
+      POSTGRES_PASSWORD: gitblame
+      POSTGRES_DB: gitblame
+    ports:
+      - "5432:5432"
+    volumes:
+      - gitblame-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gitblame"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  gitblame-pg:
