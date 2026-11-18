@@ -13,4 +13,5 @@ createApp({
   signingSecret: env('SLACK_SIGNING_SECRET'),
   channelId: env('SLACK_CHANNEL_ID'),
   notifyToken: process.env.BOT_NOTIFY_TOKEN || undefined,
+  apiToken: process.env.API_TOKEN || undefined,
 }).listen(port, () => console.log(`[bot] à l'écoute des coupables sur :${port}`));

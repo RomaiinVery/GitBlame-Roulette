@@ -8,6 +8,7 @@ export interface Config {
   signingSecret: string;
   channelId: string;
   notifyToken?: string;
+  apiToken?: string;
   slackApiUrl?: string;
 }
 
@@ -35,19 +36,21 @@ export function createApp(cfg: Config) {
   const backend = (path: string, init?: RequestInit) =>
     fetch(cfg.backendUrl + path, {
       ...init,
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...(cfg.apiToken && { authorization: `Bearer ${cfg.apiToken}` }) },
       signal: AbortSignal.timeout(BACKEND_TIMEOUT_MS),
     });
 
   async function notify(req: IncomingMessage, res: ServerResponse) {
     if (cfg.notifyToken && req.headers.authorization !== `Bearer ${cfg.notifyToken}`) return send(res, 401);
-    let blame: Blame;
+    let event: { type?: string; blame?: Blame };
     try {
-      blame = JSON.parse(await readBody(req));
-      if (!blame?.scapegoat?.name || !blame?.incident?.title) throw new Error('payload');
+      event = JSON.parse(await readBody(req));
     } catch {
       return send(res, 400, { error: 'Blâme illisible, le coupable court toujours.' });
     }
+    if (event?.type !== 'blame.created') return send(res, 204); // Événement inconnu : on fait semblant de n'avoir rien vu.
+    const blame = event.blame;
+    if (!blame?.scapegoat?.name || !blame?.incident?.title) return send(res, 400, { error: 'Blâme incomplet.' });
     const r = await fetch(`${slackApi}/chat.postMessage`, {
       method: 'POST',
       headers: { 'content-type': 'application/json; charset=utf-8', authorization: `Bearer ${cfg.slackToken}` },
@@ -72,7 +75,7 @@ export function createApp(cfg: Config) {
           if (!text) return send(res, 200, { response_type: 'ephemeral', text: 'Usage : `/roulette <description de la panne>`' });
           const r = await backend('/api/incidents', {
             method: 'POST',
-            body: JSON.stringify({ title: text, source: 'slack', reportedBy: form.get('user_id') }),
+            body: JSON.stringify({ title: text, requestedBy: form.get('user_id') }),
           });
           if (!r.ok) throw new Error(`backend ${r.status}`);
           return send(res, 200, { response_type: 'in_channel', text: `🎰 La roue tourne pour : _${text}_ … un coupable arrive.` });
@@ -83,7 +86,7 @@ export function createApp(cfg: Config) {
           if (mention) params.set('slackUserId', mention[1]);
           const r = await backend(`/api/blames?${params}`);
           if (!r.ok) throw new Error(`backend ${r.status}`);
-          return send(res, 200, historyMessage((await r.json()) as Blame[]));
+          return send(res, 200, historyMessage(((await r.json()) as { blames: Blame[] }).blames));
         }
         default:
           return send(res, 200, { response_type: 'ephemeral', text: 'Commande inconnue. Même la roulette a ses limites.' });

@@ -11,36 +11,41 @@
    * `/roulette <description>` → déclenche un incident manuel côté backend.
    * `/blame [@user]` → affiche le tableau de chasse (derniers blâmes).
 4. **Tests & CI** — `npm run lint` (typecheck) + `npm test` (`node --test`), job `test-bot-client`.
-5. **Plus tard** — Teams, boutons interactifs (« Faire appel du verdict »), quand le backend expose de quoi les servir.
+5. **Plus tard** — `/hall-of-shame` (`GET /api/leaderboard` existe déjà), boutons interactifs. Teams : hors périmètre pour l'instant.
 
 ## Ce que le bot expose
 
 | Méthode | Route | Appelant | Rôle |
 | :--- | :--- | :--- | :--- |
 | `GET` | `/health` | n'importe qui | `{ "ok": true }` |
-| `POST` | `/notify` | backend | Publie un blâme dans `SLACK_CHANNEL_ID`. Header `Authorization: Bearer $BOT_NOTIFY_TOKEN` si la variable est définie. Répond `204`. |
+| `POST` | `/notify` | backend | Publie un blâme dans `SLACK_CHANNEL_ID`. Répond `204` (y compris pour un `type` inconnu, ignoré). |
 | `POST` | `/slack/commands` | Slack | Commandes slash (signature `X-Slack-Signature` vérifiée). |
 
-### Payload `POST /notify` (le backend envoie)
+### Payload `POST /notify` — format du backend (README_STATE.md §3.2), accepté tel quel
 
 ```json
 {
-  "id": "blm_42",
-  "incident": { "title": "TypeError: cannot read 'prod' of undefined", "source": "sentry", "url": "https://sentry.io/..." },
-  "scapegoat": { "name": "Kevin", "slackUserId": "U123ABC" },
-  "alibi": "Une éruption solaire a inversé un bit dans le cache Redis.",
-  "createdAt": "2026-11-18T10:00:00Z"
+  "type": "blame.created",
+  "blame": {
+    "id": "…", "alibi": "…", "probability": 0.31, "aiFallback": false, "createdAt": "…",
+    "incident": { "id": "…", "source": "MANUAL", "title": "…", "severity": "CRITICAL", "url": null },
+    "scapegoat": { "id": "…", "name": "…", "handle": "…", "slackUserId": "U0DAVID04", "fatigueLevel": 100 }
+  }
 }
 ```
 
-`incident.url` et `scapegoat.slackUserId` sont optionnels (sans `slackUserId`, on affiche le nom).
+Champs utilisés : `incident.title|source|severity|url`, `scapegoat.name|slackUserId`, `alibi`, `probability`, `aiFallback`.
 
-## Ce dont le bot a besoin côté backend (`BACKEND_URL`)
+## Routes backend appelées (`BACKEND_URL`, Bearer `API_TOKEN` si défini)
 
-| Méthode | Route | Body / Query | Réponse attendue |
-| :--- | :--- | :--- | :--- |
-| `POST` | `/api/incidents` | `{ "title": string, "source": "slack", "reportedBy": string }` | `202` rapidement (< 2,5 s, limite Slack de 3 s). Le blâme revient ensuite via `POST {BOT_URL}/notify`. |
-| `GET` | `/api/blames` | `?limit=5[&slackUserId=U123]` | `200` avec un tableau de blâmes au format `/notify` ci-dessus, du plus récent au plus ancien. |
+| Commande | Appel | Body / Query |
+| :--- | :--- | :--- |
+| `/roulette <titre>` | `POST /api/incidents` | `{ "title", "requestedBy": "<Slack user ID>" }` → `202`, verdict via `/notify` |
+| `/blame [@user]` | `GET /api/blames` | `?limit=5[&slackUserId=U…]` → `{ "blames": [Blame] }` |
+
+## Demande au backend (Dev 1)
+
+* **Auth de `/notify`** : le bot exige `Authorization: Bearer $BOT_NOTIFY_TOKEN` si cette variable est définie. Merci d'envoyer ce header (même valeur des deux côtés), sinon `401`.
 
 ## Variables d'environnement
 
