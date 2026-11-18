@@ -1,0 +1,91 @@
+// Schéma de GitBlame Roulette.
+// Le backend est le SEUL à toucher cette base (cf. AGENTS.md §2.3).
+// Toute ressemblance avec un vrai coupable serait purement statistique.
+
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  moduleFormat           = "esm"
+  importFileExtension    = "js"
+  runtime                = "nodejs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum IncidentSource {
+  SENTRY
+  CI
+  MANUAL
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+/// Un·e développeur·se éligible à la roulette.
+model Developer {
+  id           String   @id @default(cuid())
+  name         String
+  /// Pseudo lisible (souvent le login git). Unique.
+  handle       String   @unique
+  /// ID Slack (ex: U024BE7LH) : clé utilisée par le bot pour les mentions et GET /api/blames?slackUserId=.
+  slackUserId  String?  @unique
+  email        String?  @unique
+  /// Date d'embauche : l'ai-service en déduit l'ancienneté pour la pondération ChaosJustice™.
+  hiredAt      DateTime
+  /// 0 = frais comme un premier commit, 100 = zombie de l'astreinte.
+  fatigueLevel Int      @default(0)
+  /// Les inactifs (vacances, démission, témoin protégé) sont exclus du tirage.
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  blames Blame[]
+}
+
+/// Une alerte reçue (Sentry, CI) ou une roulette lancée à la main.
+model Incident {
+  id             String         @id @default(cuid())
+  source         IncidentSource
+  /// Identifiant chez la source (issue Sentry, run CI) : garantit l'idempotence des webhooks rejoués.
+  externalId     String?
+  title          String
+  severity       Severity
+  repository     String?
+  commitSha      String?
+  url            String?
+  /// Le véritable auteur du commit. Stocké pour l'audit, jamais affiché. Jamais.
+  originalAuthor String?
+  rawPayload     Json?
+  createdAt      DateTime       @default(now())
+
+  blame Blame?
+
+  @@unique([source, externalId])
+  @@index([createdAt])
+}
+
+/// Le verdict : un bouc émissaire et son alibi.
+model Blame {
+  id          String    @id @default(cuid())
+  incidentId  String    @unique
+  scapegoatId String
+  alibi       String
+  /// Probabilité qu'avait le bouc émissaire d'être tiré (fournie par l'ai-service si disponible).
+  probability Float?
+  /// true si l'ai-service était injoignable et qu'on a tiré au sort nous-mêmes, comme des sauvages.
+  aiFallback  Boolean   @default(false)
+  notifiedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  incident  Incident  @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  scapegoat Developer @relation(fields: [scapegoatId], references: [id], onDelete: Restrict)
+
+  @@index([scapegoatId])
+  @@index([createdAt])
+}
