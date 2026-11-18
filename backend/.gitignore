@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.env
+# Client Prisma généré au postinstall : on ne versionne pas les preuves.
+src/generated/
